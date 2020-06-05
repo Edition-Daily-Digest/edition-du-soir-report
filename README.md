@@ -1,6 +1,7 @@
 # Edition du soir report
 
 ## A executer qu'une fois(la premiere fois)
+```
 python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
