@@ -104,7 +104,7 @@ args = vars(ap.parse_args())
 
 # Init columns informations
 options = {'reverse': []}
-days = [1,  7]
+days = [1, 7, 15, 30]
 fieldscolumn = OrderedDict()
 fieldscolumn = {
     'cas_confirmes': {
@@ -180,17 +180,27 @@ dfall['nouvelles_reanimations'] = df_OC19['nouvelles_reanimations']
 # ex: avg, diff, var, var_diff, etc ..
 for field in fieldscolumn:
     for d in days:
+        dfall[f'prev_{field}_{d}j'] = dfall[field].shift(-d)
         if not fieldscolumn[field]['total'] and d > 1:
             dfall[f'avg_{field}_{d}j'] = dfall[field].rolling(
                 window=d).mean().round(2)
+            dfall[f'prev_avg_{field}_{d}j'] = dfall[f'avg_{field}_{d}j'].shift(-d)
 
         dfall[f'diff_{field}_{d}j'] = dfall[field].diff(periods=d)
+        dfall[f'prev_diff_{field}_{d}j'] = dfall[f'diff_{field}_{d}j'].shift(-d)
+
         dfall[f'diff_diff_{field}_{d}j'] = dfall[f'diff_{field}_{d}j'].diff(
             periods=d)
+        dfall[f'prev_diff_diff_{field}_{d}j'] = dfall[f'diff_diff_{field}_{d}j'].shift(-d)
+
+
         dfall[f'var_{field}_{d}j'] = (dfall[field].pct_change(
             periods=d)*100).round(2)
+        dfall[f'prev_var_{field}_{d}j'] = dfall[f'var_{field}_{d}j'].shift(-d)
+
         dfall[f'var_diff_{field}_{d}j'] = (dfall[f'diff_{field}_{d}j'].pct_change(
             periods=1)*100).round(2)
+        dfall[f'prev_var_diff_{field}_{d}j'] = dfall[f'var_diff_{field}_{d}j'].shift(-d)
 
         # options
         if 'reverse' in fieldscolumn[field] and fieldscolumn[field]['reverse']:
@@ -200,7 +210,7 @@ for field in fieldscolumn:
 
 # Order columns for exporting CSV file
 dfcolumns = []
-subfields = ['var', 'diff', 'avg', 'var_diff']
+subfields = ['var', 'diff', 'avg', 'var_diff','prev']
 for field in fieldscolumn:
     dfcolumns.append(field)
 
@@ -223,12 +233,9 @@ for subfield in subfields:
                 dfcolumns.append(f'{subfield}_{field}_{d}j')
 
             # Diff
-            if subfield == 'diff':
+            if subfield in ['diff','var_diff','prev']:
                 dfcolumns.append(f'{subfield}_{field}_{d}j')
 
-            # differential variation
-            if subfield == 'var_diff':
-                dfcolumns.append(f'{subfield}_{field}_{d}j')
 
 
 # Save to CSV Raw
@@ -354,14 +361,14 @@ html = """<html lang="fr">
 
 <body>
 
-<table>
+<table width="100%">
   <caption>Rapport</caption>
   <thead>
     <tr>
       <th class='center' scope="col" >Date</th>
 """
 for column in htmlcolumn:
-    html += f"""<th class='center' scope="col" colspan=2 >{column}</th>"""
+    html += f"""<th class='center' scope="col" colspan=3>{column}</th>"""
 
 html += f"""
     </tr>
@@ -379,11 +386,18 @@ for idx, item in df.iterrows():
 """
 
     for column in htmlcolumn:
-        html += f"""<td class="center field" scope="row" data-label="{column}">{item[column]}&nbsp;(<span class="{item[f'diff_{column}_1j_color']}">{item[f'txt_diff_{column}_1j']}</span>)</td>"""
-        html += f"""<td class="center" scope="row" data-label="{column}_trend">"""
+        html += f"""<td class="center field" scope="row" data-label="{column}">{item[column]} (<span class="{item[f'diff_{column}_1j_color']}">{item[f'txt_diff_{column}_1j']}</span>)</td>"""
 
-        html += f"""<span class="{item[f'var_diff_{column}_1j_color']}">{item[f'trend_diff_{column}_1j']}&nbsp;{item[f'var_diff_{column}_1j']}</span>&nbsp;({item[f'txt_diff_diff_{column}_1j']})</br>"""
-        html += f"""<span class="{item[f'var_diff_{column}_7j_color']}">{item[f'trend_diff_{column}_7j']}&nbsp;{item[f'var_diff_{column}_7j']}</span>&nbsp;({item[f'txt_diff_diff_{column}_7j']})</br>"""
+        html += f"""<td class="right" scope="row" data-label="day">"""
+        for d in days:
+            html += f"J-{d}</br>"
+        html += "</td>"
+
+
+        html += f"""<td class="left" scope="row" data-label="{column}_trend">"""
+
+        for d in days:
+            html += f"""<span class="{item[f'var_diff_{column}_{d}j_color']}">{item[f'trend_diff_{column}_{d}j']} {item[f'var_diff_{column}_{d}j']}</span>&nbsp;({item[f'txt_diff_diff_{column}_{d}j']})</br>"""
 
         html += "</td>"
 
@@ -415,14 +429,17 @@ for idx, item in df.iterrows():
 
     <body>
     """
+
+
+
     html += f"""<h1>Rapport journalier pour {idx}</h1>"""
     html += f"""{item['cas_confirmes']} cas confirmés en France"""
     html += "<ul>"
     for d in days:
         if last is not None and not pd.isna(item[f'diff_cas_confirmes_{d}j']):
-            html += f"""<li>Sur {d}j : Variation ({item[f'diff_cas_confirmes_{d}j']} / <span class="bad">{item[f'var_cas_confirmes_{d}j']}%</span>), variation tendance {item[f'var_diff_cas_confirmes_{d}j']} (Prec.: {last[f'diff_cas_confirmes_{d}j']})</li>"""
+            html += f"""<li>Sur {d}j : Variation ({item[f'txt_diff_cas_confirmes_{d}j']} / <span class="{item[f'diff_cas_confirmes_{d}j_color']}">{item[f'txt_var_cas_confirmes_{d}j']}</span>), variation de la tendance {item[f'txt_var_diff_cas_confirmes_{d}j']} (Prec.: {last[f'txt_diff_cas_confirmes_{d}j']})</li>"""
         else:
-            html += f"""<li>Sur {d}j : Variation ({item[f'diff_cas_confirmes_{d}j']} / <span class="bad">{item[f'var_cas_confirmes_{d}j']}%</span>)</li>"""
+            html += f"""<li>Sur {d}j : Variation ({item[f'txt_diff_cas_confirmes_{d}j']} / <span class="bad">{item[f'txt_var_cas_confirmes_{d}j']}</span>)</li>"""
 
         last = item
 

@@ -25,6 +25,7 @@ table th, table td {
   padding: .6em;
   color: #808080;
   background-color: #222222;
+  white-space: nowrap;
 }
 
 table th.center, table td.center {
@@ -33,6 +34,10 @@ table th.center, table td.center {
 
 table th.left, table td.left {
   text-align: left;
+}
+
+table th.right, table td.right {
+  text-align: right;
 }
 
 table td.field {
