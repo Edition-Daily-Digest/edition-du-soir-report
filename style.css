@@ -21,15 +21,33 @@ table tr {
   border: 1px solid #444444;
 }
 
-table th, table td {
+table td {
   padding: .6em;
   color: #808080;
   background-color: #222222;
   white-space: nowrap;
 }
 
+table td.odd {
+  padding: .6em;
+  color: #808080;
+  background-color: #222222;
+  white-space: nowrap;
+}
+
+table td.even {
+  padding: .6em;
+  color: #808080;
+  background-color: #2B2B2B;
+  white-space: nowrap;
+}
+
 table th.center, table td.center {
   text-align: center;
+}
+
+table td.center {
+  color: skyblue;
 }
 
 table th.left, table td.left {
@@ -54,6 +72,26 @@ table th {
   background-color: #383838;
 }
 
+table th.odd {
+  position: sticky;
+  top: 0;
+  font-size: .85em;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: rgb(107, 124, 117);
+  background-color: #383838;
+}
+
+table th.even {
+  position: sticky;
+  top: 0;
+  font-size: .85em;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: rgb(107, 124, 117);
+  background-color: #4F4F4F;
+}
+
 span.good {
   color: rgb(63, 242, 69);
 }
@@ -64,6 +102,60 @@ span.unknow {
 
 span.bad {
   color: rgb(239, 73, 41);
+}
+
+span.empty {
+  color: 808080;
+}
+
+/* https://github.com/badele/gnuplot-styles/blob/master/color/diverging/RdYlGn.plt */
+
+span.level-1 {
+  color: #808080;
+}
+
+span.level0 {
+  color: #006837;
+}
+
+span.level1 {
+  color: #3ba858;
+}
+
+span.level2 {
+  color: #9dd569;
+}
+
+span.level3 {
+  color: #e4f49a;
+}
+
+span.level4 {
+  color: #fee99a;
+}
+
+span.level5 {
+  color: #fca55d;
+}
+
+span.level6 {
+  color: #e34a33;
+}
+
+span.level7 {
+  color: #a50026;
+}
+
+.imgcontainer {
+  position: relative;
+  text-align: center;
+  color: white;
+}
+
+.imgpercent {
+  position: absolute;
+  top: 8px;
+  right: 16px;
 }
 
 @media screen and (max-width: 600px) {

@@ -1,5 +1,6 @@
 #!/usr/bin/python
 import os
+import re
 import yaml
 import argparse
 import numpy as np
@@ -12,15 +13,9 @@ pd.set_option('display.max_columns', None)
 pd.set_option('display.max_rows', None)
 pd.set_option('display.width', 1000)
 
-# ReadItem, if not exists, set 0 value
-
-
-def readItem(item, itemname):
-    if itemname not in item['donneesNationales']:
-        return 0
-
-    return item['donneesNationales'][itemname]
-
+COUNTER=1
+GAUGE=2
+SRCIMAGE="src='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII='"
 
 def formatInt(value):
     change = str(value)
@@ -49,7 +44,7 @@ def formatVariation(value):
         return ''
 
     change = str(value)
-    change = change.replace('.0', '')
+    change = re.sub(r'\.0+$','',change)
     if change != '' and change != '0' and '-' not in change:
         change = f'+{change}'
 
@@ -76,14 +71,14 @@ def formatStyle(value, **kwargs):
     if '+' in change:
         # Bad
         styleidx = 0
-        if kwargs['variation'] and value < 5:
+        if kwargs['minvariation'] and value < 5:
             # unknow
             styleidx = 2
 
     elif '-' in change:
         # Good
         styleidx = 1
-        if kwargs['variation'] and value > -5:
+        if kwargs['minvariation'] and value > -5:
             # unknow
             styleidx = 2
     else:
@@ -97,6 +92,26 @@ def formatStyle(value, **kwargs):
     return state[styleidx]
 
 
+def getPowerImage(value):
+    height = 18
+    width = 50
+    emptyimage=f"""<img {SRCIMAGE} width={width}px height={height} style="background-color:#808080;"/>"""
+    separator=f"""<img {SRCIMAGE} width=2px height={height}"/>"""
+
+    if isinstance(value,str):
+        image = f'{emptyimage}{emptyimage}'
+    else:
+        realwidth = int(abs(value) / 100*width)
+        emptywidth = width-realwidth
+        if value < 0:
+            image = f"""<img {SRCIMAGE} width={emptywidth}px height={height} style="background-color:#808080;"/><img {SRCIMAGE} width={realwidth}px height={height} style="background-color:#00FF00;"/>"""
+            image += f'{separator}{emptyimage}'
+        else:
+            image = f'{emptyimage}{separator}'
+            image += f"""<img {SRCIMAGE} width={realwidth}px height={height} style="background-color:#FF0000;"/><img {SRCIMAGE} width={emptywidth}px height={height} style="background-color:#808080;"/>"""
+
+    return image
+
 # Argument options
 ap = argparse.ArgumentParser()
 ap.add_argument("-p", "--path",	help="Git repo Path")
@@ -108,47 +123,47 @@ days = [1, 7, 15, 30]
 fieldscolumn = OrderedDict()
 fieldscolumn = {
     'cas_confirmes': {
-        'total': True,
+        'type': COUNTER,
 
     },
     'hospitalises': {
-        'total': False,
+        'type': GAUGE,
 
     },
     'nouvelles_hospitalisations': {
-        'total': False,
+        'type': GAUGE,
 
     },
     'gueris': {
-        'total': True,
+        'type': COUNTER,
         'reverse': True,
 
     },
     'reanimation': {
-        'total': False,
+        'type': GAUGE,
 
     },
     'nouvelles_reanimations': {
-        'total': False,
+        'type': GAUGE,
 
     },
     'deces': {
-        'total': True,
+        'type': COUNTER,
 
 
     },
     'cas_ehpad': {
-        'total': True,
+        'type': COUNTER,
 
 
     },
     'cas_confirmes_ehpad': {
-        'total': True,
+        'type': COUNTER,
 
 
     },
     'deces_ehpad': {
-        'total': True,
+        'type': COUNTER,
 
     }
 }
@@ -176,23 +191,45 @@ dfall = df_MSS
 dfall['nouvelles_hospitalisations'] = df_OC19['nouvelles_hospitalisations']
 dfall['nouvelles_reanimations'] = df_OC19['nouvelles_reanimations']
 
+
+# flag empty values
+for field in fieldscolumn:
+    dfall[f'{field}_isna'] = dfall[field].isna()
+
+
+# Replace empty values
+for field in fieldscolumn:
+    #dfall[field] = dfall[field].fillna(method='ffill')
+    dfall[field] = dfall[field].interpolate().fillna(0).astype(int)
+
+
 # Calc computed fields
 # ex: avg, diff, var, var_diff, etc ..
 for field in fieldscolumn:
     for d in days:
-        dfall[f'prev_{field}_{d}j'] = dfall[field].shift(-d)
-        if not fieldscolumn[field]['total'] and d > 1:
-            dfall[f'avg_{field}_{d}j'] = dfall[field].rolling(
-                window=d).mean().round(2)
-            dfall[f'prev_avg_{field}_{d}j'] = dfall[f'avg_{field}_{d}j'].shift(-d)
-
+        # Commons
         dfall[f'diff_{field}_{d}j'] = dfall[field].diff(periods=d)
+
+        # Counter
+        if fieldscolumn[field]['type'] == COUNTER:
+            dfall[f'sum_{field}_{d}j'] = dfall[f'diff_{field}_1j'].rolling(
+                window=d).sum().round(2)
+
+        # Gauge
+        if fieldscolumn[field]['type'] == GAUGE:
+            # SUM
+            dfall[f'sum_{field}_{d}j'] = dfall[field].rolling(
+                window=d).sum().round(2)
+
+        # Commons
+        dfall[f'prev_{field}_{d}j'] = dfall[field].shift(-d)
+
         dfall[f'prev_diff_{field}_{d}j'] = dfall[f'diff_{field}_{d}j'].shift(-d)
 
         dfall[f'diff_diff_{field}_{d}j'] = dfall[f'diff_{field}_{d}j'].diff(
             periods=d)
-        dfall[f'prev_diff_diff_{field}_{d}j'] = dfall[f'diff_diff_{field}_{d}j'].shift(-d)
 
+        dfall[f'prev_diff_diff_{field}_{d}j'] = dfall[f'diff_diff_{field}_{d}j'].shift(-d)
 
         dfall[f'var_{field}_{d}j'] = (dfall[field].pct_change(
             periods=d)*100).round(2)
@@ -202,6 +239,23 @@ for field in fieldscolumn:
             periods=1)*100).round(2)
         dfall[f'prev_var_diff_{field}_{d}j'] = dfall[f'var_diff_{field}_{d}j'].shift(-d)
 
+        # Sum
+        dfall[f'diff_sum_{field}_{d}j'] = dfall[f'sum_{field}_{d}j'].diff(periods=1)
+
+        dfall[f'var_sum_{field}_{d}j'] = (dfall[f'sum_{field}_{d}j'].pct_change(
+            periods=1)*100).round(2)
+        dfall[f'cummax_sum_{field}_{d}j'] = dfall[f'sum_{field}_{d}j'].cummax().round(2)
+
+        dfall[f'power_sum_{field}_{d}j'] = ((dfall[f'sum_{field}_{d}j']/dfall[f'cummax_sum_{field}_{d}j'])*100).round(2).abs()*np.sign(dfall[f'diff_sum_{field}_{d}j'])
+
+        dfall[f'avg_{field}_{d}j'] = dfall[field].rolling(
+            window=d).mean().round(2)
+
+
+        dfall[f'cummax_avg_{field}_{d}j'] = dfall[f'avg_{field}_{d}j'].cummax().round(2)
+
+        dfall[f'prev_avg_{field}_{d}j'] = dfall[f'avg_{field}_{d}j'].shift(-d)
+
         # options
         if 'reverse' in fieldscolumn[field] and fieldscolumn[field]['reverse']:
             options['reverse'].append(f'diff_{field}_{d}j')
@@ -210,32 +264,31 @@ for field in fieldscolumn:
 
 # Order columns for exporting CSV file
 dfcolumns = []
-subfields = ['var', 'diff', 'avg', 'var_diff','prev']
+subfields = ['var','diff','var_diff','sum','diff_sum','cummax_sum','power_sum', 'var_sum','avg', 'cummax_avg' ,'prev']
+#for field in fieldscolumn:
+
 for field in fieldscolumn:
     dfcolumns.append(field)
-
-for subfield in subfields:
+    dfcolumns.append(f'{field}_isna')
     for d in days:
-        for field in fieldscolumn:
-            # Avg
-            if subfield == 'avg':
-                if not fieldscolumn[field]['total']:
-                    if d > 1:
-                        dfcolumns.append(f'{subfield}_{field}_{d}j')
-
+        for subfield in subfields:
             # Global Variation
             if subfield == 'var':
                 # Keep only positive value
-                if not fieldscolumn[field]['total']:
+                if fieldscolumn[field]['type'] == GAUGE:
                     mask = dfall[f'{subfield}_{field}_{d}j'] < 0
                     dfall[mask][f'{subfield}_{field}_{d}j'] = ""
 
                 dfcolumns.append(f'{subfield}_{field}_{d}j')
+                continue
 
             # Diff
             if subfield in ['diff','var_diff','prev']:
                 dfcolumns.append(f'{subfield}_{field}_{d}j')
+                continue
 
+            # Other fields
+            dfcolumns.append(f'{subfield}_{field}_{d}j')
 
 
 # Save to CSV Raw
@@ -310,10 +363,12 @@ outfieldcolumns = [
 
 outstatscolumns = ['diff', 'var_diff', 'trend_diff']
 
-outcolumns = outfieldcolumns.copy()
+#outcolumns = outfieldcolumns.copy()
+outcolumns = []
 for outfield in outfieldcolumns:
-    for d in days:
-        for statcolumn in outstatscolumns:
+    outcolumns.append(outfield)
+    for statcolumn in outstatscolumns:
+        for d in days:
             outcolumns.append(f'{statcolumn}_{outfield}_{d}j')
 
 
@@ -333,13 +388,17 @@ for column in dfall.columns:
     if column.startswith('diff_'):
         dfall[f'txt_{column}'] = dfall[column].apply(formatDiff)
         dfall[f'{column}_color'] = dfall[column].apply(
-            formatStyle, reverse=column in options['reverse'], variation=False)
+            formatStyle, reverse=column in options['reverse'], minvariation=False)
 
     if column.startswith('var_'):
         dfall[f'txt_{column}'] = dfall[column].apply(formatVariation)
         dfall[f'{column}_color'] = dfall[column].apply(
-            formatStyle, reverse=column in options['reverse'], variation=True)
+            formatStyle, reverse=column in options['reverse'], minvariation=True)
 
+    if column.startswith('power_'):
+        dfall[f'txt_{column}'] = dfall[column].apply(formatVariation)
+        dfall[f'{column}_color'] = dfall[column].apply(
+            formatStyle, reverse=column in options['reverse'], minvariation=False)
 
 ###########################
 # Generate HTML index pages
@@ -367,8 +426,17 @@ html = """<html lang="fr">
     <tr>
       <th class='center' scope="col" >Date</th>
 """
+
+# headdays = ""
+# for d in days:
+#     headdays += f"J-{d} "
+
+stylecols = ['odd','even']
+colidx = 0
 for column in htmlcolumn:
-    html += f"""<th class='center' scope="col" colspan=3>{column}</th>"""
+    stylecol = stylecols[colidx % 2]
+    colidx += 1
+    html += f"""<th class='center {stylecol}' scope="col" colspan={len(days)+1}>{column}</th>"""
 
 html += f"""
     </tr>
@@ -384,22 +452,48 @@ for idx, item in df.iterrows():
     <tr>
       <td class="center" scope="row" data-label="date">{idx}</td>
 """
-
+    colidx = 0
     for column in htmlcolumn:
-        html += f"""<td class="center field" scope="row" data-label="{column}">{item[column]} (<span class="{item[f'diff_{column}_1j_color']}">{item[f'txt_diff_{column}_1j']}</span>)</td>"""
+        stylecol = stylecols[colidx % 2]
+        colidx += 1
+        # if fieldscolumn[column]['type']==COUNTER:
+        #     html += f"""<td class="center field {stylecol}" scope="row" data-label="{column}">{item[column]} (<span class="{item[f'diff_{column}_1j_color']}">{item[f'txt_diff_{column}_1j']}</span>)</td>"""
+        # else:
+        #     html += f"""<td class="center field {stylecol}" scope="row" data-label="{column}">{item[column]}</td>"""
 
-        html += f"""<td class="right" scope="row" data-label="day">"""
+        # Show Empty value
+        if item[f'{column}_isna']:
+            html += f"""<td class="center field {stylecol}" scope="row" data-label="{column}"><span class='empty'>({item[column]})</span></td>"""
+        else:
+            html += f"""<td class="center field {stylecol}" scope="row" data-label="{column}">{item[column]}</td>"""
+
+
+        # html += f"""<td class="right" scope="row" data-label="day">"""
+        # for d in days:
+        #     html += f"J-{d}</br>"
+        # html += "</td>"
+
+
         for d in days:
-            html += f"J-{d}</br>"
-        html += "</td>"
+            html += f"""<td class="left {stylecol}" scope="row" data-label="{column}_trend">"""
+            # if fieldscolumn[column]['type']==COUNTER:
+            #     html += f"""<span class="{item[f'var_diff_{column}_{d}j_color']}">{item[f'trend_diff_{column}_{d}j']} {item[f'var_diff_{column}_{d}j']}</span>&nbsp;({item[f'txt_diff_diff_{column}_{d}j']})</br>"""
+            # else:
+            #     value = 0
+            #     if not isinstance(item[f'power_sum_{column}_{d}j'],str):
+            #         value = item[f'power_sum_{column}_{d}j']
+
+            #     html += f"""J-{d}&nbsp;{getPowerImage(value)}&nbsp;(<span class="{item[f'power_sum_{column}_{d}j_color']}">&nbsp;{item[f'power_sum_{column}_{d}j']}</span> / {item[f'sum_{column}_{d}j']}) &nbsp; ({item[f'txt_diff_sum_{column}_{d}j']}/<span class="{item[f'diff_sum_{column}_{d}j_color']}">{item[f'txt_var_sum_{column}_{d}j']}</span>)</br>"""
 
 
-        html += f"""<td class="left" scope="row" data-label="{column}_trend">"""
+            value = 0
+            if not isinstance(item[f'power_sum_{column}_{d}j'],str):
+                value = item[f'power_sum_{column}_{d}j']
 
-        for d in days:
-            html += f"""<span class="{item[f'var_diff_{column}_{d}j_color']}">{item[f'trend_diff_{column}_{d}j']} {item[f'var_diff_{column}_{d}j']}</span>&nbsp;({item[f'txt_diff_diff_{column}_{d}j']})</br>"""
+            html += f"""J-{d}&nbsp;{getPowerImage(value)}&nbsp;P:(<span class="{item[f'power_sum_{column}_{d}j_color']}">&nbsp;{item[f'power_sum_{column}_{d}j']}%</span> / {item[f'sum_{column}_{d}j']}) &nbsp; V-1:({item[f'txt_diff_sum_{column}_{d}j']}/<span class="{item[f'diff_sum_{column}_{d}j_color']}">{item[f'txt_var_sum_{column}_{d}j']}</span>)</br>"""
 
-        html += "</td>"
+
+            html += "</td>"
 
     html += "</tr>"
 
